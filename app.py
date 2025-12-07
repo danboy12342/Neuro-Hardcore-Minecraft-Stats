@@ -245,7 +245,7 @@ try:
             
             # Determine text to display based on segment size
             # Show both run number and duration if segment is large enough (>20 minutes)
-            if duration >= 100:
+            if duration >= 30:
                 display_text = f"Run {run_num}<br>{duration} min"
             else:
                 display_text = f"Run {run_num}"
