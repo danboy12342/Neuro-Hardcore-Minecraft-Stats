@@ -23,16 +23,36 @@ def load_data():
 try:
     df = load_data()
     
+    # ==================== DAY FILTER ====================
+    st.markdown("### Filter by Day")
+    unique_days = sorted(df['Day'].unique())
+    day_options = ['All Days'] + [f'Day {day}' for day in unique_days]
+    selected_day_option = st.radio(
+        "Select which day's data to display (affects all charts and metrics below):",
+        day_options,
+        horizontal=True,
+        key="global_day_filter"
+    )
+    
+    # Filter dataframe based on selection
+    if selected_day_option == 'All Days':
+        filtered_df = df
+    else:
+        day_num = int(selected_day_option.split(' ')[1])
+        filtered_df = df[df['Day'] == day_num]
+    
+    st.markdown("---")
+    
     # ==================== SUMMARY STATISTICS ====================
-    # Calculate key metrics
-    total_time = df['Approximate Duration (Minutes)'].sum()
-    avg_duration = df['Approximate Duration (Minutes)'].mean()
+    # Calculate key metrics using filtered data
+    total_time = filtered_df['Approximate Duration (Minutes)'].sum()
+    avg_duration = filtered_df['Approximate Duration (Minutes)'].mean()
     
     # Calculate predicted time for final achievement
-    achievement_cols_summary = [col for col in df.columns if col.startswith('Achievement:')]
+    achievement_cols_summary = [col for col in filtered_df.columns if col.startswith('Achievement:')]
     achievement_durations_summary = []
     for ach in achievement_cols_summary:
-        runs_with_ach = df[df[ach] == True]
+        runs_with_ach = filtered_df[filtered_df[ach] == True]
         if len(runs_with_ach) > 0:
             avg_duration_ach = runs_with_ach['Approximate Duration (Minutes)'].mean()
             achievement_durations_summary.append(avg_duration_ach)
@@ -49,8 +69,8 @@ try:
         predicted_final = model_summary.predict([[len(achievement_cols_summary) - 1]])[0]
     
     # Get most common cause of death
-    most_common_death = df['Cause of Death'].value_counts().idxmax()
-    most_common_death_count = df['Cause of Death'].value_counts().max()
+    most_common_death = filtered_df['Cause of Death'].value_counts().idxmax()
+    most_common_death_count = filtered_df['Cause of Death'].value_counts().max()
     
     # Display metrics with custom HTML/CSS for centering and animation
     st.markdown(f"""
@@ -106,7 +126,7 @@ try:
                 <div class="metric-label-emoji">📊</div>
                 <div class="metric-label">Average Run Duration</div>
                 <div class="metric-value"><span class="counter" data-target="{int(avg_duration)}">{int(avg_duration)}</span> min</div>
-                <div class="metric-delta">↗ {len(df)} total runs</div>
+                <div class="metric-delta">↗ {len(filtered_df)} total runs</div>
             </div>
             <div class="metric-box">
                 <div class="metric-label-emoji">🚀</div>
@@ -155,8 +175,8 @@ try:
     # ==================== DEATH STATISTICS CHART ====================
     st.subheader("Who Dies the Most?")
     
-    # Prepare data for stacked bar chart
-    death_data = df.groupby(['Player Death', 'Cause of Death']).size().reset_index(name='Deaths')
+    # Prepare data for stacked bar chart using filtered data
+    death_data = filtered_df.groupby(['Player Death', 'Cause of Death']).size().reset_index(name='Deaths')
     
     # Get players sorted by total deaths (for Y-axis ordering)
     player_totals = death_data.groupby('Player Death')['Deaths'].sum().sort_values(ascending=True)
@@ -222,8 +242,8 @@ try:
     st.subheader("Total Time Lost by Player")
     st.caption("Sum of all run durations where each player died")
     
-    # Get players sorted by total time lost
-    player_totals = df.groupby('Player Death')['Approximate Duration (Minutes)'].sum().sort_values(ascending=True)
+    # Get players sorted by total time lost - use filtered data
+    player_totals = filtered_df.groupby('Player Death')['Approximate Duration (Minutes)'].sum().sort_values(ascending=True)
     players = player_totals.index.tolist()
     
     # Create figure
@@ -236,7 +256,7 @@ try:
     
     # For each player, get their runs sorted by duration (longest first) and add as stacked segments
     for player in players:
-        player_runs = df[df['Player Death'] == player].sort_values('Approximate Duration (Minutes)', ascending=False)
+        player_runs = filtered_df[filtered_df['Player Death'] == player].sort_values('Approximate Duration (Minutes)', ascending=False)
         
         # Add each run as a segment in the bar
         for idx, (_, row) in enumerate(player_runs.iterrows()):
@@ -282,110 +302,18 @@ try:
     
     st.markdown("---")  # Visual divider
 
-
-    # ==================== ACHIEVEMENT COMPLETION RATE PIE CHART ====================
-    st.subheader("Achievement Completion Rates")
-    st.caption("Percentage of runs that reached each achievement milestone. Achievements marked with asterisk have not been completed in any run yet.")
-    
-    # Get achievement columns
-    achievement_cols = [col for col in df.columns if col.startswith('Achievement:')]
-    total_runs = len(df)
-    
-    # Calculate completion rates for each achievement
-    pie_data = []
-    for idx, ach in enumerate(achievement_cols):
-        runs_with_ach = df[df[ach] == True]
-        ach_name = ach.replace('Achievement: ', '')
-        count = len(runs_with_ach)
-        percentage = (count / total_runs) * 100
-        
-        # Mark achievements that haven't been completed yet
-        if count == 0:
-            label = f"{ach_name} *"
-        else:
-            label = ach_name
-        
-        pie_data.append({
-            'Achievement': label,
-            'Count': count,
-            'Percentage': percentage,
-            'Has Data': count > 0,
-            'Order': idx  # Track achievement order
-        })
-    
-    # Add "No Achievements" category - runs that didn't get any achievements
-    runs_with_no_achievements = df[~df[achievement_cols].any(axis=1)]
-    no_ach_count = len(runs_with_no_achievements)
-    no_ach_percentage = (no_ach_count / total_runs) * 100
-    
-    pie_data.append({
-        'Achievement': 'No Achievements',
-        'Count': no_ach_count,
-        'Percentage': no_ach_percentage,
-        'Has Data': True,
-        'Order': -1  # Put at beginning
-    })
-    
-    # Create DataFrame
-    pie_df = pd.DataFrame(pie_data)
-    
-    # Create pie chart
-    fig_pie = go.Figure()
-    
-    # Progressive monochrome color palette - lighter to darker
-    # Early achievements (common) = lighter, later achievements (rare) = darker
-    achievement_colors = [
-        '#B2DFDB',  # No Achievements - light teal
-        '#80CBC4',  # Acquire Hardware - light green-teal
-        '#4DB6AC',  # We Need to Go Deeper - medium green-teal
-        '#26A69A',  # A Terrible Fortress - darker green-teal
-        '#00897B',  # Into Fire - deep green-teal
-        '#00695C',  # Eye Spy - very dark green-teal
-        '#004D40',  # The End? - darkest green-teal (not achieved)
-        '#00251A'   # Free the end - extremely dark green-teal (not achieved)
-    ]
-    
-    # Assign colors based on order
-    colors = []
-    for _, row in pie_df.iterrows():
-        order = row['Order']
-        if order == -1:
-            colors.append(achievement_colors[0])  # No Achievements
-        else:
-            colors.append(achievement_colors[order + 1])
-    
-    fig_pie.add_trace(go.Pie(
-        labels=pie_df['Achievement'],
-        values=pie_df['Count'],
-        marker=dict(colors=colors),
-        textinfo='label+percent',
-        textfont=dict(size=14),
-        hovertemplate='<b>%{label}</b><br>Runs: %{value}<br>Percentage: %{percent}<extra></extra>'
-    ))
-    
-    fig_pie.update_layout(
-        height=500,
-        font=dict(size=14),
-        showlegend=False,
-        margin=dict(t=20, b=40, l=40, r=40)
-    )
-    
-    st.plotly_chart(fig_pie, use_container_width=True)
-    
-    st.markdown("---")  # Visual divider
-
     # ==================== ACHIEVEMENT DURATION PREDICTION ====================
     st.subheader("Time to Reach Achievements (with Predictions)")
     st.caption("Predictions based on average run duration when achievements were completed")
     
-    # Get achievement columns in order
-    achievement_cols_pred = [col for col in df.columns if col.startswith('Achievement:')]
+    # Get achievement columns in order - use filtered data
+    achievement_cols_pred = [col for col in filtered_df.columns if col.startswith('Achievement:')]
     
     # Calculate average duration for each achievement (only for completed ones)
     achievement_durations = []
     achievement_names_completed = []
     for idx, ach in enumerate(achievement_cols_pred):
-        runs_with_ach = df[df[ach] == True]
+        runs_with_ach = filtered_df[filtered_df[ach] == True]
         ach_name = ach.replace('Achievement: ', '')
         if len(runs_with_ach) > 0:
             avg_duration = runs_with_ach['Approximate Duration (Minutes)'].mean()
@@ -473,22 +401,287 @@ try:
     
     st.markdown("---")  # Visual divider
 
+    # ==================== ACHIEVEMENT COMPLETION RATE PIE CHART ====================
+    st.subheader("Achievement Completion Rates")
+    st.caption("Percentage of runs that reached each achievement milestone. Achievements marked with asterisk have not been completed in any run yet.")
+    
+    # Get achievement columns - use filtered data
+    achievement_cols = [col for col in filtered_df.columns if col.startswith('Achievement:')]
+    total_runs = len(filtered_df)
+    
+    # Calculate completion rates for each achievement
+    pie_data = []
+    for idx, ach in enumerate(achievement_cols):
+        runs_with_ach = filtered_df[filtered_df[ach] == True]
+        ach_name = ach.replace('Achievement: ', '')
+        count = len(runs_with_ach)
+        percentage = (count / total_runs) * 100
+        
+        # Mark achievements that haven't been completed yet
+        if count == 0:
+            label = f"{ach_name} *"
+        else:
+            label = ach_name
+        
+        pie_data.append({
+            'Achievement': label,
+            'Count': count,
+            'Percentage': percentage,
+            'Has Data': count > 0,
+            'Order': idx  # Track achievement order
+        })
+    
+    # Add "No Milestones" category - runs that didn't get any milestone achievements
+    runs_with_no_achievements = filtered_df[~filtered_df[achievement_cols].any(axis=1)]
+    no_ach_count = len(runs_with_no_achievements)
+    no_ach_percentage = (no_ach_count / total_runs) * 100
+    
+    pie_data.append({
+        'Achievement': 'No Milestone Achievements',
+        'Count': no_ach_count,
+        'Percentage': no_ach_percentage,
+        'Has Data': True,
+        'Order': -1  # Put at beginning
+    })
+    
+    # Create DataFrame
+    pie_df = pd.DataFrame(pie_data)
+    
+    # Create pie chart
+    fig_pie = go.Figure()
+    
+    # Progressive monochrome color palette - lighter to darker
+    # Early achievements (common) = lighter, later achievements (rare) = darker
+    achievement_colors = [
+        '#B2DFDB',  # No Milestone Achievements - light teal
+        '#80CBC4',  # Acquire Hardware - light green-teal
+        '#4DB6AC',  # We Need to Go Deeper - medium green-teal
+        '#26A69A',  # A Terrible Fortress - darker green-teal
+        '#00897B',  # Into Fire - deep green-teal
+        '#00695C',  # Eye Spy - very dark green-teal
+        '#004D40',  # The End? - darkest green-teal (not achieved)
+        '#00251A'   # Free the end - extremely dark green-teal (not achieved)
+    ]
+    
+    # Assign colors based on order
+    colors = []
+    for _, row in pie_df.iterrows():
+        order = row['Order']
+        if order == -1:
+            colors.append(achievement_colors[0])  # No Achievements
+        else:
+            colors.append(achievement_colors[order + 1])
+    
+    fig_pie.add_trace(go.Pie(
+        labels=pie_df['Achievement'],
+        values=pie_df['Count'],
+        marker=dict(colors=colors),
+        textinfo='label+percent',
+        textfont=dict(size=14),
+        hovertemplate='<b>%{label}</b><br>Runs: %{value}<br>Percentage: %{percent}<extra></extra>'
+    ))
+    
+    fig_pie.update_layout(
+        height=500,
+        font=dict(size=14),
+        showlegend=False,
+        margin=dict(t=20, b=40, l=40, r=40)
+    )
+    
+    st.plotly_chart(fig_pie, use_container_width=True)
+    
+    st.markdown("---")  # Visual divider
+
+
+    # ==================== DAY-BY-DAY TRENDS ====================
+    st.subheader("Performance Trends Across Days")
+    st.caption("Track how key metrics evolved over each streaming day")
+    
+    # Only show this if "All Days" is selected
+    if selected_day_option == 'All Days':
+        # Calculate metrics for each day
+        unique_days_trend = sorted(df['Day'].unique())
+        day_trend_data = []
+        
+        achievement_cols_trend = [col for col in df.columns if col.startswith('Achievement:')]
+        
+        for day in unique_days_trend:
+            day_df = df[df['Day'] == day]
+            
+            # Average run duration
+            avg_run_duration = day_df['Approximate Duration (Minutes)'].mean()
+            
+            # Longest run duration
+            max_run_duration = day_df['Approximate Duration (Minutes)'].max()
+            
+            # Average achievements per run
+            avg_achievements = day_df[achievement_cols_trend].sum(axis=1).mean()
+            
+            # Furthest achievement reached (count of unique achievements completed)
+            furthest_achievement_idx = -1
+            for idx, ach in enumerate(achievement_cols_trend):
+                if day_df[ach].any():
+                    furthest_achievement_idx = idx
+            
+            day_trend_data.append({
+                'Day': day,
+                'Avg Duration': avg_run_duration,
+                'Max Duration': max_run_duration,
+                'Avg Achievements': avg_achievements,
+                'Furthest Achievement': furthest_achievement_idx + 1
+            })
+        
+        trend_df = pd.DataFrame(day_trend_data)
+        
+        # Create side-by-side charts using columns
+        col1, col2 = st.columns(2)
+        
+        # LEFT CHART: Max/Peak Performance
+        with col1:
+            fig_max = go.Figure()
+            
+            # Max Duration
+            fig_max.add_trace(go.Scatter(
+                x=trend_df['Day'],
+                y=trend_df['Max Duration'],
+                mode='lines+markers',
+                name='Longest Run Duration',
+                line=dict(color='#2196F3', width=3),
+                marker=dict(size=10)
+            ))
+            
+            # Furthest Achievement
+            fig_max.add_trace(go.Scatter(
+                x=trend_df['Day'],
+                y=trend_df['Furthest Achievement'],
+                mode='lines+markers',
+                name='Furthest Achievement Reached',
+                line=dict(color='#9C27B0', width=3),
+                marker=dict(size=10),
+                yaxis='y2'
+            ))
+            
+            fig_max.update_layout(
+                title='Peak Performance by Day',
+                title_font=dict(size=16),
+                height=450,
+                xaxis=dict(
+                    title='Day',
+                    tickmode='array',
+                    tickvals=unique_days_trend,
+                    ticktext=[f'Day {d}' for d in unique_days_trend],
+                    title_font=dict(size=14),
+                    tickfont=dict(size=12)
+                ),
+                yaxis=dict(
+                    title='Duration (Minutes)',
+                    title_font=dict(color='#2196F3', size=14),
+                    tickfont=dict(color='#2196F3', size=11)
+                ),
+                yaxis2=dict(
+                    title='Achievement #',
+                    title_font=dict(color='#9C27B0', size=14),
+                    tickfont=dict(color='#9C27B0', size=11),
+                    overlaying='y',
+                    side='right'
+                ),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=10)
+                ),
+                hovermode='x unified',
+                margin=dict(t=60, b=60, l=60, r=60)
+            )
+            
+            st.plotly_chart(fig_max, use_container_width=True)
+        
+        # RIGHT CHART: Average Performance
+        with col2:
+            fig_avg = go.Figure()
+            
+            # Average Duration
+            fig_avg.add_trace(go.Scatter(
+                x=trend_df['Day'],
+                y=trend_df['Avg Duration'],
+                mode='lines+markers',
+                name='Average Run Duration',
+                line=dict(color='#4CAF50', width=3),
+                marker=dict(size=10)
+            ))
+            
+            # Average Achievements
+            fig_avg.add_trace(go.Scatter(
+                x=trend_df['Day'],
+                y=trend_df['Avg Achievements'],
+                mode='lines+markers',
+                name='Avg Achievements per Run',
+                line=dict(color='#FF9800', width=3),
+                marker=dict(size=10),
+                yaxis='y2'
+            ))
+            
+            fig_avg.update_layout(
+                title='Average Performance by Day',
+                title_font=dict(size=16),
+                height=450,
+                xaxis=dict(
+                    title='Day',
+                    tickmode='array',
+                    tickvals=unique_days_trend,
+                    ticktext=[f'Day {d}' for d in unique_days_trend],
+                    title_font=dict(size=14),
+                    tickfont=dict(size=12)
+                ),
+                yaxis=dict(
+                    title='Duration (Minutes)',
+                    title_font=dict(color='#4CAF50', size=14),
+                    tickfont=dict(color='#4CAF50', size=11)
+                ),
+                yaxis2=dict(
+                    title='Achievements',
+                    title_font=dict(color='#FF9800', size=14),
+                    tickfont=dict(color='#FF9800', size=11),
+                    overlaying='y',
+                    side='right'
+                ),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=10)
+                ),
+                hovermode='x unified',
+                margin=dict(t=60, b=60, l=60, r=60)
+            )
+            
+            st.plotly_chart(fig_avg, use_container_width=True)
+    else:
+        st.info("📊 Select 'All Days' to see performance trends across days")
+    
+    st.markdown("---")  # Visual divider
+
     # ==================== FULL DATA TABLE ====================
     st.subheader("Run Data")
     
-    # Create a copy of the dataframe for display
-    display_df = df.copy()
+    # Create a copy of the filtered dataframe for display
+    display_df = filtered_df.copy()
     
     # Separate basic stats and achievements
-    basic_cols = ['Run', 'Approximate Duration (Minutes)', 'Player Death', 'Cause of Death']
-    achievement_cols = [col for col in display_df.columns if col.startswith('Achievement:')]
+    basic_cols = ['Run', 'Day', 'Approximate Duration (Minutes)', 'Player Death', 'Cause of Death']
+    achievement_cols_table = [col for col in display_df.columns if col.startswith('Achievement:')]
     
     # Rename achievement columns to remove "Achievement: " prefix
-    rename_dict = {col: col.replace('Achievement: ', '' if display_df[col].any() else '') for col in achievement_cols}
+    rename_dict = {col: col.replace('Achievement: ', '' if display_df[col].any() else '') for col in achievement_cols_table}
     display_df = display_df.rename(columns=rename_dict)
     
     # Reorder columns: basic stats first, then achievements
-    new_achievement_names = [rename_dict[col] for col in achievement_cols]
+    new_achievement_names = [rename_dict[col] for col in achievement_cols_table]
     display_df = display_df[basic_cols + new_achievement_names]
     
     # Configure column display
@@ -515,7 +708,7 @@ try:
     )
     
     # Show summary stats
-    st.caption(f"Total Runs: {len(df)} | Total Players: {df['Player Death'].nunique()}")
+    st.caption(f"Total Runs: {len(filtered_df)} | Total Players: {filtered_df['Player Death'].nunique()}")
     
 except FileNotFoundError:
     st.error("Could not find 'stats.ods'. Please make sure the file is in the same directory as app.py")
