@@ -302,8 +302,112 @@ try:
     
     st.markdown("---")  # Visual divider
 
+    # ==================== VERTICAL RUN TIMELINE ====================
+    st.subheader("Run Timeline")
+    st.caption("All runs stacked vertically in chronological order")
+    
+    # Determine grouping based on filter
+    if selected_day_option == 'All Days':
+        # Group by day when showing all days
+        unique_days_timeline = sorted(filtered_df['Day'].unique())
+        x_labels = [f"Day {day}" for day in unique_days_timeline]
+        group_by_day = True
+    else:
+        # Show single bar when filtered to one day
+        x_labels = ["All Runs"]
+        group_by_day = False
+    
+    # Create figure
+    fig_timeline_vert = go.Figure()
+    
+    # Color palette for runs
+    colors_timeline_v = ['#e74c3c', '#c0392b', '#e67e22', '#d35400', '#f39c12', '#f1c40f', 
+                         '#16a085', '#1abc9c', '#3498db', '#2980b9', '#9b59b6', '#8e44ad',
+                         '#34495e', '#95a5a6', '#7f8c8d']
+    
+    if group_by_day:
+        # For each day, create a vertical stacked bar
+        for day in unique_days_timeline:
+            day_runs = filtered_df[filtered_df['Day'] == day].sort_values('Run')
+            
+            # Add each run as a segment in the vertical bar
+            for idx, (_, row) in enumerate(day_runs.iterrows()):
+                run_num = row['Run']
+                duration = row['Approximate Duration (Minutes)']
+                player = row['Player Death']
+                
+                # Determine text to display based on segment size
+                if duration >= 30:
+                    display_text = f"Run {run_num}"
+                else:
+                    display_text = f""
+                
+                fig_timeline_vert.add_trace(go.Bar(
+                    name=f"Run {run_num}",
+                    x=[f"Day {day}"],
+                    y=[duration],
+                    marker=dict(color=colors_timeline_v[idx % len(colors_timeline_v)]),
+                    text=display_text,
+                    textposition='inside',
+                    insidetextanchor='middle',
+                    textfont=dict(size=11),
+                    hovertemplate=f'<b>Run {run_num}</b><br>Day {day}<br>Player: {player}<br>Duration: {duration} minutes<extra></extra>',
+                    showlegend=False
+                ))
+    else:
+        # Single bar with all filtered runs
+        runs_sorted = filtered_df.sort_values('Run')
+        for idx, (_, row) in enumerate(runs_sorted.iterrows()):
+            run_num = row['Run']
+            duration = row['Approximate Duration (Minutes)']
+            player = row['Player Death']
+            
+            # Determine text to display based on segment size
+            if duration >= 30:
+                display_text = f"Run {run_num}"
+            else:
+                display_text = f""
+        
+            fig_timeline_vert.add_trace(go.Bar(
+                name=f"Run {run_num}",
+                x=["All Runs"],
+                y=[duration],
+                marker=dict(color=colors_timeline_v[idx % len(colors_timeline_v)]),
+                text=display_text,
+                textposition='inside',
+                insidetextanchor='middle',
+                textfont=dict(size=11),
+                hovertemplate=f'<b>Run {run_num}</b><br>Player: {player}<br>Duration: {duration} minutes<extra></extra>',
+                showlegend=False
+            ))
+    
+    fig_timeline_vert.update_layout(
+        barmode='stack',
+        height=600,
+        xaxis=dict(
+            title="",
+            title_font=dict(size=18), 
+            tickfont=dict(size=14),
+            side='top'  # Move x-axis to top
+        ),
+        yaxis=dict(
+            title="Duration (Minutes)",
+            title_font=dict(size=18), 
+            tickfont=dict(size=14),
+            autorange='reversed'  # Bars go top to bottom
+        ),
+        font=dict(size=16),
+        showlegend=False,
+        hovermode='closest',
+        margin=dict(t=60, b=40, l=60, r=40)
+    )
+    
+    st.plotly_chart(fig_timeline_vert, use_container_width=True)
+    
+    st.markdown("---")  # Visual divider
+
     # ==================== ACHIEVEMENT DURATION PREDICTION ====================
-    st.subheader("Time to Reach Achievements (with Predictions)")
+    st.subheader("Time to Reach Milestone Achievements (with Predictions)")
     st.caption("Predictions based on average run duration when achievements were completed")
     
     # Get achievement columns in order - use filtered data
@@ -402,7 +506,7 @@ try:
     st.markdown("---")  # Visual divider
 
     # ==================== ACHIEVEMENT COMPLETION RATE PIE CHART ====================
-    st.subheader("Achievement Completion Rates")
+    st.subheader("Milestone Achievement Completion Rates")
     st.caption("Percentage of runs that reached each achievement milestone. Achievements marked with asterisk have not been completed in any run yet.")
     
     # Get achievement columns - use filtered data
@@ -527,8 +631,8 @@ try:
                 'Day': day,
                 'Avg Duration': avg_run_duration,
                 'Max Duration': max_run_duration,
-                'Avg Achievements': avg_achievements,
-                'Furthest Achievement': furthest_achievement_idx + 1
+                'Avg Milestone Achievements': avg_achievements,
+                'Furthest Milestone Achievement': furthest_achievement_idx + 1
             })
         
         trend_df = pd.DataFrame(day_trend_data)
@@ -546,17 +650,17 @@ try:
                 y=trend_df['Max Duration'],
                 mode='lines+markers',
                 name='Longest Run Duration',
-                line=dict(color='#2196F3', width=3),
+                line=dict(color='#4CAF50', width=3),
                 marker=dict(size=10)
             ))
             
             # Furthest Achievement
             fig_max.add_trace(go.Scatter(
                 x=trend_df['Day'],
-                y=trend_df['Furthest Achievement'],
+                y=trend_df['Furthest Milestone Achievement'],
                 mode='lines+markers',
-                name='Furthest Achievement Reached',
-                line=dict(color='#9C27B0', width=3),
+                name='Furthest Milestone Achievement Reached',
+                line=dict(color='#FF9800', width=3),
                 marker=dict(size=10),
                 yaxis='y2'
             ))
@@ -575,13 +679,13 @@ try:
                 ),
                 yaxis=dict(
                     title='Duration (Minutes)',
-                    title_font=dict(color='#2196F3', size=14),
-                    tickfont=dict(color='#2196F3', size=11)
+                    title_font=dict(color='#4CAF50', size=14),
+                    tickfont=dict(color='#4CAF50', size=11)
                 ),
                 yaxis2=dict(
-                    title='Achievement #',
-                    title_font=dict(color='#9C27B0', size=14),
-                    tickfont=dict(color='#9C27B0', size=11),
+                    title='Milestone Achievements',
+                    title_font=dict(color='#FF9800', size=14),
+                    tickfont=dict(color='#FF9800', size=11),
                     overlaying='y',
                     side='right'
                 ),
@@ -616,9 +720,9 @@ try:
             # Average Achievements
             fig_avg.add_trace(go.Scatter(
                 x=trend_df['Day'],
-                y=trend_df['Avg Achievements'],
+                y=trend_df['Avg Milestone Achievements'],
                 mode='lines+markers',
-                name='Avg Achievements per Run',
+                name='Avg Milestone Achievements per Run',
                 line=dict(color='#FF9800', width=3),
                 marker=dict(size=10),
                 yaxis='y2'
@@ -642,7 +746,7 @@ try:
                     tickfont=dict(color='#4CAF50', size=11)
                 ),
                 yaxis2=dict(
-                    title='Achievements',
+                    title='Milestone Achievements',
                     title_font=dict(color='#FF9800', size=14),
                     tickfont=dict(color='#FF9800', size=11),
                     overlaying='y',
