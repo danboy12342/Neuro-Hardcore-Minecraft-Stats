@@ -320,10 +320,17 @@ if not df.empty:
                 showlegend=False
             ))
             
+        # Define the strict order for the days
+        days_order = [f"Day {d}" for d in sorted(filtered_df['Day'].unique())]
+
         fig_timeline.update_layout(
             barmode='stack', 
             height=400,
-            yaxis=dict(autorange="reversed"),
+            yaxis=dict(
+                autorange="reversed", # Puts Day 1 at the top, Day 4 at bottom
+                categoryorder='array',
+                categoryarray=days_order # Forces the specific order
+            ),
             margin=dict(l=0, r=0, t=30, b=0)
         )
         st.plotly_chart(fig_timeline, use_container_width=True)
